@@ -24,6 +24,20 @@ app.get('/api/prices', async (req, res) => {
   if (!item) {
     return res.status(400).json({ error: 'Missing required query parameter: item' });
   }
+// GET /api/locations?zip=80911
+app.get('/api/locations', async (req, res) => {
+  const { zip } = req.query;
+  if (!zip) {
+    return res.status(400).json({ error: 'Missing zip query parameter' });
+  }
+  try {
+    const locations = await krogerFetcher.getLocations(zip);
+    res.json({ zip, locations });
+  } catch (err) {
+    console.error('Error fetching locations:', err);
+    res.status(500).json({ error: 'Failed to fetch locations', details: err.message });
+  }
+});
 
   try {
     // Fetch Kroger results.  Pass a location ID via the KROGER_LOCATION_ID env
