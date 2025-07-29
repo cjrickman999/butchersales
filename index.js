@@ -1,3 +1,8 @@
+// Simple health‑check at the root
+app.get('/', (req, res) => {
+  res.json({ status: 'OK', timestamp: Date.now() });
+});
+
 require('dotenv').config();
 const express = require('express');
 const krogerFetcher = require('./krogerFetcher');
