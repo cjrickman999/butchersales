@@ -27,8 +27,8 @@ async function searchProducts(keyword, locationId, limit = 5) {
   const resp = await axios.get('https://api.kroger.com/v1/products', {
     headers: { Authorization: `Bearer ${token}` },
     params: {
-      filter.term: keyword,
-      filter.locationId: locationId,
+      'filter.term': keyword,
+      'filter.locationId': locationId,
       limit,
     },
   });
@@ -45,7 +45,6 @@ async function searchProducts(keyword, locationId, limit = 5) {
 
 /**
  * Fetch a list of Kroger store locations for a given ZIP code.
- * Returns an array of objects with { locationId, name, address, distance }.
  */
 async function getLocations(zip) {
   if (!zip) throw new Error('ZIP code is required');
