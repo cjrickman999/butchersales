@@ -1,21 +1,34 @@
 // index.js
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const krogerFetcher = require('./krogerFetcher');
 const walmartFetcher = require('./walmartFetcher');
 
 const app = express();
-app.use(cors());
 
-// Health‑check
+// Allow requests from your frontend
+app.use(cors());
+// Parse JSON bodies (if you ever POST data)
+app.use(express.json());
+
+/**
+ * Health-check
+ */
 app.get('/', (req, res) => {
   res.json({ status: 'OK', timestamp: Date.now() });
 });
 
-// Location lookup
+/**
+ * GET /api/locations?zip=80911
+ * Returns an array of Kroger store locations for a given ZIP code.
+ */
 app.get('/api/locations', async (req, res) => {
   const { zip } = req.query;
-  if (!zip) return res.status(400).json({ error: 'Missing zip query parameter' });
+  if (!zip) {
+    return res.status(400).json({ error: 'Missing zip query parameter' });
+  }
   try {
     const locations = await krogerFetcher.getLocations(zip);
     res.json({ zip, locations });
@@ -25,14 +38,17 @@ app.get('/api/locations', async (req, res) => {
   }
 });
 
-// Price lookup
+/**
+ * GET /api/prices?item=ribeye&zip=80911
+ * Returns combined price data from Kroger and Walmart.
+ */
 app.get('/api/prices', async (req, res) => {
   const { item, zip } = req.query;
-  if (!item) return res.status(400).json({ error: 'Missing item query parameter' });
+  if (!item) {
+    return res.status(400).json({ error: 'Missing item query parameter' });
+  }
   try {
-    // First get your Kroger data
     const krogerData = await krogerFetcher.searchProducts(item, zip);
-    // Then Walmart (if configured)
     const walmartData = await walmartFetcher(item, zip);
     res.json({ item, zip: zip || null, prices: [...krogerData, ...walmartData] });
   } catch (err) {
@@ -41,11 +57,11 @@ app.get('/api/prices', async (req, res) => {
   }
 });
 
-// Start server
+/**
+ * Start the server
+ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+
