@@ -1,107 +1,75 @@
 const axios = require('axios');
-
-/*
- * krogerFetcher.js
- *
- * This module provides helper functions for interacting with Kroger's public
- * product catalog API.  It encapsulates the OAuth2 token flow and exposes a
- * simple search function that returns normalized product data.  Real pricing
- * requires a valid OAuth2 client_id and client_secret, which you must
- * provision from the Kroger Developer Portal.
- *
- * Environment variables:
- *   KROGER_CLIENT_ID       – your Kroger client identifier
- *   KROGER_CLIENT_SECRET   – your Kroger client secret
- *   KROGER_SCOPE           – optional scope; defaults to "product.compact"
- */
-
-const KROGER_CLIENT_ID = process.env.KROGER_CLIENT_ID;
-const KROGER_CLIENT_SECRET = process.env.KROGER_CLIENT_SECRET;
-const KROGER_SCOPE = process.env.KROGER_SCOPE || 'product.compact';
-
-// OAuth2 token endpoint for service‑to‑service authentication.  See
-// https://developer.kroger.com for up‑to‑date details.
-const TOKEN_ENDPOINT = 'https://api.kroger.com/v1/connect/oauth2/token';
-// Base URL for the Products API.
-const API_BASE_URL = 'https://api.kroger.com/v1';
+require('dotenv').config();
 
 /**
- * Request an access token using the client credentials grant.
- *
- * @returns {Promise<string>} A promise that resolves to a bearer token.
+ * Obtain an OAuth2 token from Kroger using client‑credentials.
  */
-async function getAccessToken() {
-  if (!KROGER_CLIENT_ID || !KROGER_CLIENT_SECRET) {
-    throw new Error('KROGER_CLIENT_ID and KROGER_CLIENT_SECRET must be set');
-  }
-
-  // Kroger expects form‑encoded parameters and basic auth credentials.
-  const payload = new URLSearchParams({
-    grant_type: 'client_credentials',
-    scope: KROGER_SCOPE,
-  });
-
-  const response = await axios.post(TOKEN_ENDPOINT, payload.toString(), {
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    auth: {
-      username: KROGER_CLIENT_ID,
-      password: KROGER_CLIENT_SECRET,
-    },
-  });
-
-  return response.data.access_token;
+async function getToken() {
+  const resp = await axios.post(
+    'https://api.kroger.com/v1/connect/oauth2/token',
+    new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: process.env.KROGER_CLIENT_ID,
+      client_secret: process.env.KROGER_CLIENT_SECRET,
+      scope: process.env.KROGER_SCOPE || 'product.compact location.compact',
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+  return resp.data.access_token;
 }
 
 /**
- * Search Kroger's product catalog.
- *
- * @param {string} term        The search term (e.g. "ribeye steak").
- * @param {string} locationId  The store/location identifier.  You can obtain
- *                             location IDs via Kroger's Locations API.  If
- *                             omitted, pricing information may not be
- *                             returned.
- * @param {number} limit       Optional limit on the number of returned items.
- * @returns {Promise<Array>}   A promise that resolves to a list of normalized
- *                             product objects with name, size, price and
- *                             promoPrice fields.
+ * Search Kroger products by keyword and optional locationId.
  */
-async function searchProducts(term, locationId, limit = 10) {
-  if (!term) {
-    throw new Error('search term is required');
-  }
-
-  const token = await getAccessToken();
-
-  // Build query parameters according to the Products API specification.
-  const params = {
-    'filter.term': term,
-    'filter.locationId': locationId,
-    'filter.limit': limit,
-  };
-
-  const response = await axios.get(`${API_BASE_URL}/products`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
+async function searchProducts(keyword, locationId, limit = 5) {
+  if (!keyword) throw new Error('Keyword is required');
+  const token = await getToken();
+  const resp = await axios.get('https://api.kroger.com/v1/products', {
+    headers: { Authorization: `Bearer ${token}` },
+    params: {
+      filter.term: keyword,
+      filter.locationId: locationId,
+      limit,
     },
-    params,
   });
+  return resp.data.data.map(p => ({
+    locationId: p.locationId,
+    name: p.description,
+    upc: p.items[0]?.upc,
+    size: p.items[0]?.size,
+    price: p.items[0]?.price.regular,
+    promoPrice: p.items[0]?.price.promo || null,
+    currency: p.items[0]?.price.currency,
+  }));
+}
 
-  const products = response.data.data || [];
-  return products.map((product) => {
-    const item = product.items && product.items[0];
-    const priceInfo = (item && item.price) || {};
-    return {
-      name: product.description || product.productDescription?.description || '',
-      size: item?.size || '',
-      price: priceInfo.regular || null,
-      promoPrice: priceInfo.promo || null,
-      currency: priceInfo.currency || 'USD',
-    };
-  });
+/**
+ * Fetch a list of Kroger store locations for a given ZIP code.
+ * Returns an array of objects with { locationId, name, address, distance }.
+ */
+async function getLocations(zip) {
+  if (!zip) throw new Error('ZIP code is required');
+  const token = await getToken();
+  const resp = await axios.get(
+    'https://api.kroger.com/v1/locations',
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      params: { 'filter.zipCode': zip },
+    }
+  );
+  return resp.data.data.map(loc => ({
+    locationId: loc.locationId,
+    name: loc.name,
+    address: loc.address,
+    distance: loc.distance,
+  }));
 }
 
 module.exports = {
+  getToken,
   searchProducts,
+  getLocations,
 };
